@@ -10,109 +10,146 @@ import os
 import numpy as np
 import random
 import music21 as m21
-import matplotlib.pyplot as plt
-from preprocessor import convert_songs_to_int, transpose, encode, load_mapping
+from preprocessor import convert_songs_to_int, transpose, encode, load_mapping, SAVE_DIRECTORY
 from model import build_model, get_n_vocab
+from evaluator import Evaluator, INPUT_DIR
 
-INPUT_MELODY = "../melody/input_melody.mid"
-UPDATED_MELODY = "../melody/updated_melody"
-FINAL_MELODY = "../melody/final_melody.mid"
+SEED_MELODY = "../melody/seed_melody.mid"
+PREDICTED_MELODY = "../melody/predicted_melody"
+FINAL_MELODY = "../melody/final_melody"
 
 class MelodyGenerator:
-    
-    def __init__(self, input_melody=None, start_melody_length=None, temperature=None, num_iterations=1, correction=False, plots=False):
+    """Class that uses the trained model to generate melodies with or without intervention of the user."""
+
+    def __init__(self, seed_melody=None, seed_num_notes=None, seed_pos="random",temperature=None, num_iterations=1, correction=False):
+        """Constructor that initializes the Melody Generator.
+        :param seed_melody (str): file path of the seed melody.
+        :param start_num_notes (int): number of notes required in the seed melody (note count).
+        :param temperature (float): Value from 0 to 1 that determines the determinism of the model. 
+                                    Higher value, less determinism.
+        :param num_iterations (int): number of (co-)generation iterations.
+        :param correction (bool): True if the user can correct the generated melody in each iteration, 
+                                  False otherwise.
+        """
+        
         self.num_iterations = num_iterations
         self.temperature = temperature
         self.correction = correction
+        self.symbols = list(load_mapping().keys())
+        self.seed_num_notes = seed_num_notes
+        
+        # get the model with the best weights (that offered the less loss value in training)
         self.model = build_model(get_n_vocab(), weights="best")
-        self.symbols = self.get_vocab_symbols()
-        self.final_melody = None
-        self.start_melody_length = start_melody_length
-        
-        if plots == False:
-            self.metrics = None
-        else:
-            self.metrics = {'mel_length': [], 'pc': [], 'pr': [], 'api': [], 'nc': [], 'aioi': []}
-        
-        if input_melody == None:
-            self.input_melody = self.get_input_mel()
-        else:
-            self.input_melody = self.get_input_mel(input_melody)
-            
-        
 
-    def get_input_mel(self, filename=None):
+        # get encoded seed melody and save it
+        if seed_melody == None:
+            self.seed_melody = self.get_seed_mel(seed_pos)
+        else:
+            self.seed_melody = self.get_seed_mel(seed_pos, seed_melody)
         
-        # get melody string
+        self.create_midi_file(self.seed_melody, SEED_MELODY)
+
+    def get_seed_mel(self, seed_pos, filename=None):
+        """Get the seed melody for the (co-)generation.
+        :param filename (str): file path of the input melody. If None, get a random file from the encoded dataset.
+        :return seed_melody (str): 
+        """
+
+        # get melody string. If filename is None, get a random song from the encoded dataset.
         if filename == None:
-            music_file = random.choice(os.listdir("../dataset/"))
-            with open("../dataset/" + music_file,"r") as fp:
+            music_file = random.choice(os.listdir(SAVE_DIRECTORY))
+            with open(SAVE_DIRECTORY + music_file,"r") as fp:
                 melody_string = fp.read()
         else:
-            with open("../input/" + filename,"r") as fp:
-                melody_string = fp.read()
-                
-        if self.start_melody_length == None or self.start_melody_length > len(melody_string):
-            self.start_melody_length = len(melody_string)
-            return melody_string
+            melody_string = encode(m21.converter.parse(INPUT_DIR + filename))
 
         melody_string = melody_string.split()
-        
-        # while loop to get correct melody
-        melody_found = False
-        while melody_found == False:
-            
-            # get random string of size 12
-            random_index = int(random.random() * (len(melody_string) - self.start_melody_length))
-            melody_substring = melody_string[random_index:random_index+self.start_melody_length]
-            
-            # check that string as at least 2 pitches, a pitch at index 0 and no "/"
-            if (melody_substring[0] == "_") or (melody_substring[0] == "r"):
-                continue
+        melody_pitches = list(map(str, filter(lambda symbol: symbol != '_' and symbol != "r", melody_string)))
 
-            melody_pitches = list(map(str, filter(lambda symbol: symbol != '_' and symbol != "r", melody_substring)))
-            if (len(melody_pitches) < 2) or (not all(melody_pitch in self.symbols for melody_pitch in melody_pitches)):
-                continue
+        # if the start melody length is undefined or bigger than the whole melody, update it an return the whole melody
+        if self.seed_num_notes == None or self.seed_num_notes > len(melody_pitches):
+            self.seed_num_notes = len(melody_pitches)
+            return " ".join(melody_string)
+
+        # check f the seed is supposed to be fetched from the start or a random position
+        if seed_pos == "random":
+          # while loop to get correct melody
+          melody_found = False
+          while melody_found == False:
+              
+              # get random index in the melody
+              random_index = int(random.random() * (len(melody_string) - self.seed_num_notes))
+              
+              # check if the beginning of input_melody is a pitch
+              if (melody_string[random_index] == "_") or (melody_string[random_index] == "r"):
+                  continue
+              
+              num_notes = 1
+              melody_substring = [melody_string[random_index]]
+              for i in range(random_index, len(melody_string)):
+                  if num_notes == self.seed_num_notes:
+                      break
+                  
+                  melody_substring.append(melody_string[i])
+                  if melody_string[i] != "_" and melody_string[i] != "r":
+                      num_notes += 1
+              
+              if num_notes < self.seed_num_notes:
+                  continue
+              
+              melody_found = True
+
+        elif seed_pos == "start":
+          
+          num_notes = 0
+          melody_substring = []
+          for i in range(len(melody_string)):
+            if num_notes == self.seed_num_notes:
+                break
             
-            melody_found = True
-        
-        print("Input Melody: " + " ".join(melody_substring))
-        return " ".join(melody_substring)
-    
-    def get_input_melody(self, melody_file):
-        return encode(transpose(m21.converter.parse(melody_file)))
-    
-    def get_updated_melody(self, n):
-        return encode(transpose(m21.converter.parse(UPDATED_MELODY + str(n) + ".mid")))
+            melody_substring.append(melody_string[i])
+            if melody_string[i] != "_" and melody_string[i] != "r":
+                num_notes += 1
 
-    def get_vocab_symbols(self):
-        return list(load_mapping().keys())
+        seed_melody = " ".join(melody_substring)
+        print("Input Melody: " + seed_melody)
+        return seed_melody
 
-    # + temperature -> + unpredictability
     def temperature_sampling(self, probabilities, temperature):
-    
+        """Get index from the probability array, by apllying a softmax function using temperature.
+        :param probabilities (nd.array): Probabilities of each possible output.
+        :param temperature (float): Value from 0 to 1 that determines the determinism of the model. Higher value, less determinism.
+        :return index (int): 
+        """
+
         # + temperature -> smaller values
         predictions = np.log(probabilities) / temperature
-        
+
         # softmax function 
-        # with smaller values the probability distribution is softer -> differences of probabilities will shrink, which leads to a more homogeneous distribution
-        # with larger values the probability distribuition is going to be more conservative -> values with high prob. are more likely to be picked
+        # with smaller values the probability distribution is softer -> differences of probabilities will shrink, which leads to a more homogeneous distribution.
+        # with larger values the probability distribuition is going to be more conservative -> values with high prob. are more likely to be picked.
         probabilities = np.exp(predictions) / np.sum(np.exp(predictions))
-          
+
         choices = range(len(probabilities))
         index = np.random.choice(choices, p=probabilities) # each choice has a probability
-          
+
         return index
 
-    # função de (co-)geração https://www.youtube.com/watch?v=6YdQdf4eBD4&list=PL-wATfeyAMNr0KMutwtbeDCmpwvtul-Xz&index=8
     def generate_melody(self, input_melody, temperature=None):
-    
-        pattern = convert_songs_to_int(self.input_melody)
+        """Generate melody with the size of the input_melody.
+        :param input_melody (str): Seed encoded melody for the generation.
+        :param temperature (float): Value from 0 to 1 that determines the determinism of the model. Higher value, less determinism.
+        :return predicted_melody_str (str): Predicted melody
+        :return final_melody (str): Input melody + Predicted melody
+        """
+
+        pattern = convert_songs_to_int(input_melody)
         predicted_melody = []
         num_steps = len(pattern)
 
         # generate notes
-        for step in range(num_steps):
+        step = 0
+        while step < num_steps:
             prediction_input = np.reshape(pattern, (1, len(pattern), 1))
             prediction_input = prediction_input / float(get_n_vocab())
 
@@ -122,30 +159,37 @@ class MelodyGenerator:
             else:
                 index = np.argmax(probabilities)
             result = self.symbols[index]
-    
-            if result == '/':
-                break
+
+            if result == "/":
+              break
             
             predicted_melody.append(result)
             predicted_melody.append(" ")
             pattern.append(index)
 
+            step += 1
+
         predicted_melody_str = "".join(predicted_melody)
         final_melody = input_melody + " " + predicted_melody_str
         return predicted_melody_str, final_melody
 
-    def create_midi_file(self, final_melody, melody_file):
+    def create_midi_file(self, melody, melody_file):
+        """Create midi file from the encoded final melody.
+        :param final_melody (str): Final encoded melody.
+        :param melody_file (str): Melody file path to save the final melody.
+        """
+        
         midi_stream = m21.stream.Stream()
         
         start_symbol = None
         duration_counter = 1
-        final_melody = final_melody.split()
+        melody = melody.split()
         
         # create note and rest objects based on the values generated by the model
-        for i, symbol in enumerate(final_melody):
+        for i, symbol in enumerate(melody):
         
             # symbol is a pitch or rest
-            if symbol != '_' or (i+1) == len(final_melody):
+            if symbol != '_' or (i+1) == len(melody):
                 if start_symbol is not None:
                     duration = duration_counter * 0.25
                 
@@ -166,98 +210,27 @@ class MelodyGenerator:
         
         midi_stream.write('midi', fp=melody_file)
 
-    # calculate all the metrics
-    def calc_metrics(self, melody):
-    
-        # number of different pitches
-        def pitch_count(melody_pitches):
-            return len(list(set(melody_pitches)))
-        
-        # difference between the highest and the lowest pitch
-        def pitch_range(melody_pitches):
-            if len(melody_pitches) == 0:
-                return 0
-        
-            return max(melody_pitches) - min(melody_pitches)
-        
-        # average value between two consecutive pitches
-        def average_pitch_interval(melody_pitches):
-            if len(melody_pitches) < 2:
-                return 0
-        
-            pitch_intervals_sum = 0
-            for i in range(len(melody_pitches)-1):
-                pitch_intervals_sum += abs(melody_pitches[i+1] - melody_pitches[i])
-            
-            return pitch_intervals_sum / (len(melody_pitches)-1)
-        
-        # number of used notes (consider only the rhythm of the notes, not pitches)
-        def note_count(melody_pitches):
-            return len(melody_pitches)
-        
-        # calculate the average time between two consecutive notes
-        def average_inter_onset_interval(melody, nc):
-            if nc < 2:
-                return 0
-            
-            return len(melody) * 0.25 / float(nc - 1)
-    
-        melody = melody.split()
-        melody_pitches = list(map(int, filter(lambda symbol: symbol != '_' and symbol != "r", melody)))
-          
-        # Pitch based
-        pc = pitch_count(melody_pitches)
-        pr = pitch_range(melody_pitches)
-        api = average_pitch_interval(melody_pitches)
-          
-        # Rythm based
-        nc = note_count(melody_pitches)
-        aioi = average_inter_onset_interval(melody, nc)
-      
-        return pc, pr, api, nc, aioi
-
-    def plot_metrics_generation(self):
-        plt.figure(figsize=[20,10])
-        plt.title(f"Initial Input Melody Length = {self.metrics['mel_length'][0]}; Num Iterations = {self.num_iterations}")
-        plt.plot(self.metrics['mel_length'], self.metrics['pc'], label="Pitch Count")
-        plt.plot(self.metrics['mel_length'], self.metrics['pr'], label="Pitch Range")
-        plt.plot(self.metrics['mel_length'], self.metrics['api'], label="Average Pitch Interval")
-        plt.plot(self.metrics['mel_length'], self.metrics['nc'], label="Note Count")
-        plt.plot(self.metrics['mel_length'], self.metrics['aioi'], label="Average Inter-Onset-Interval")
-        plt.xlabel("Input Melody Length")
-        plt.ylabel("Abs(Pred. Metric - Input Metric)")
-        plt.legend()
-        plt.show()
-
     def iterative_generation(self):
+        """Iteratively generate melodies, using the input melody as the seed and 
+        updating the seed of each iteration to the final melody of the previous one.
+           In each iteration, a file with its final melody is created.
+        """
 
-        input_melody = self.input_melody
+        input_melody = self.seed_melody
         
         # iterar por n_iterations (n)
         for n in range(self.num_iterations):
-        
+
             # gerar melodia com base na input_melody (predicted_melody, final_melody)
             predicted_melody, final_melody = self.generate_melody(input_melody, temperature=self.temperature)
             
             if predicted_melody == "":
-                break
+              break
             
-            print("Melody generated")
-            if self.metrics != None:
-                # calcular métricas para input_melody e predicted_melody
-                pc_input, pr_input, api_input, nc_input, aioi_input = self.calc_metrics(input_melody)
-                pc_output, pr_output, api_output, nc_output, aioi_output = self.calc_metrics(predicted_melody)
-            
-                # guardar métricas
-                self.metrics['mel_length'].append(len(input_melody.split()))
-                self.metrics['pc'].append(abs(pc_output - pc_input))
-                self.metrics['pr'].append(abs(pr_output - pr_input))
-                self.metrics['api'].append(abs(api_output - api_input))
-                self.metrics['nc'].append(abs(nc_output - nc_input))
-                self.metrics['aioi'].append(abs(aioi_output - aioi_input))
-            
-            self.create_midi_file(final_melody, UPDATED_MELODY + str(n+1) + ".mid")
-            print("Updated melody file created")
+            print("----- Melody generated -----")
+            self.create_midi_file(predicted_melody, PREDICTED_MELODY + str(n+1) + ".mid")
+            self.create_midi_file(final_melody, FINAL_MELODY + str(n+1) + ".mid")
+            print("----- Updated melody file created -----")
             
             # atualizar input_melody para final_melody
             input_melody = final_melody
@@ -265,64 +238,55 @@ class MelodyGenerator:
         self.final_melody = final_melody
     
     def iterative_co_generation(self):
+        """Iteratively co-generate melodies, using the input melody as the seed and 
+        updating the seed of each iteration to the final melody of the previous one.
+           In each iteration, a file with its final melody is created, opened with
+        Musescore, so the user can change the melody. Then the user has to export and
+        substitute the respective MIDI file with the correct one in the Musescore app.
+        The seed melody for the next iteration is substituted by the melody in the updated file.
+        """
         
-        input_melody = self.input_melody
+        input_melody = self.seed_melody
         
         # iterar por n_iterations (n)
         for n in range(self.num_iterations):
             
             # gerar melodia com base na input_melody (predicted_melody, final_melody)
             predicted_melody, final_melody = self.generate_melody(input_melody, temperature=self.temperature)
-            
+
             if predicted_melody == "":
-                break
+              break
             
-            print("Melody generated")
-            if self.metrics != None:
-                # calcular métricas para input_melody e predicted_melody
-                pc_input, pr_input, api_input, nc_input, aioi_input = self.calc_metrics(input_melody)
-                pc_output, pr_output, api_output, nc_output, aioi_output = self.calc_metrics(predicted_melody)
+            print("----- Melody generated -----")
+            self.create_midi_file(predicted_melody, PREDICTED_MELODY + str(n+1) + ".mid")
+            self.create_midi_file(final_melody, FINAL_MELODY + str(n+1) + ".mid")
+            print("----- Predited and final melody files created -----")
             
-                # guardar métricas
-                self.metrics['mel_length'].append(len(input_melody.split()))
-                self.metrics['pc'].append(abs(pc_output - pc_input))
-                self.metrics['pr'].append(abs(pr_output - pr_input))
-                self.metrics['api'].append(abs(api_output - api_input))
-                self.metrics['nc'].append(abs(nc_output - nc_input))
-                self.metrics['aioi'].append(abs(aioi_output - aioi_input))
-            
-            self.create_midi_file(final_melody, UPDATED_MELODY + str(n+1) + ".mid")
-            print("Updated melody file created")
-            
-            melody = m21.converter.parse(UPDATED_MELODY + str(n+1) + ".mid")
+            melody = m21.converter.parse(FINAL_MELODY + str(n+1) + ".mid")
             melody.show()
-            input("Enter any key to continue...")
+            input("----- Enter any key to continue... -----")
             
-            input_melody = self.get_updated_melody(n+1)
-        
-        self.final_melody = final_melody
-    
+            input_melody = encode(transpose(melody))
+
     def generate(self):
         if self.correction == False:
             self.iterative_generation()
         else:
             self.iterative_co_generation()
-        
-        self.plot_metrics_generation()
-        
       
 if __name__ == "__main__":
     
-    # sem melodia de input; 10 iterações; sem correções (geração apenas)
-    #mg = MelodyGenerator(start_melody_length=12, num_iterations=10, plots=True)
+    seed_melody = "do_re_mi.mid"
+    seed_num_notes = 5
+    seed_pos = "start"
+    temperature = 0.5
+    num_iterations = 5
+    correction = True
     
-    # com melodia de input; 10 iterações; sem correções
-    #mg = MelodyGenerator(input_melody=INPUT_MELODY, start_melody_length=12, num_iterations=10, plots=True)
-    
-    # sem melodia de input; 10 iterações; com correções
-    mg = MelodyGenerator(start_melody_length=12, num_iterations=10, correction=True, plots=True)
-    
-    # com melodia de input; 10 iterações; com correções
-    #mg = MelodyGenerator(input_melody=INPUT_MELODY, start_melody_length=12, num_iterations=10, correction=True, plots=True)
-    
+    mg = MelodyGenerator(seed_melody=seed_melody, seed_num_notes=seed_num_notes, seed_pos=seed_pos, temperature=0.5, num_iterations=num_iterations, correction=correction)
     mg.generate()
+    
+    ev = Evaluator(target_filename=seed_melody)
+    ev.plot_iter_pitch_metrics()
+    ev.plot_iter_rythm_metrics()
+    ev.plot_final_metrics()
