@@ -10,7 +10,7 @@ import os
 import numpy as np
 import random
 import music21 as m21
-from preprocessor import convert_songs_to_int, transpose, encode, load_mapping, SAVE_DIRECTORY
+from preprocessor import convert_songs_to_int, encode, load_mapping, SAVE_DIRECTORY
 from model import build_model, get_n_vocab
 from evaluator import Evaluator, INPUT_DIR
 
@@ -149,7 +149,7 @@ class MelodyGenerator:
 
         # generate notes
         step = 0
-        while step < num_steps:
+        for step in range(num_steps):
             prediction_input = np.reshape(pattern, (1, len(pattern), 1))
             prediction_input = prediction_input / float(get_n_vocab())
 
@@ -164,14 +164,12 @@ class MelodyGenerator:
               break
             
             predicted_melody.append(result)
-            predicted_melody.append(" ")
             pattern.append(index)
 
-            step += 1
+        predicted_melody = " ".join(predicted_melody)
+        final_melody = input_melody + " " + predicted_melody
 
-        predicted_melody_str = "".join(predicted_melody)
-        final_melody = input_melody + " " + predicted_melody_str
-        return predicted_melody_str, final_melody
+        return predicted_melody, final_melody
 
     def create_midi_file(self, melody, melody_file):
         """Create midi file from the encoded final melody.
@@ -191,6 +189,9 @@ class MelodyGenerator:
             # symbol is a pitch or rest
             if symbol != '_' or (i+1) == len(melody):
                 if start_symbol is not None:
+                    if symbol == '_':
+                        duration_counter += 1
+                    
                     duration = duration_counter * 0.25
                 
                     # symbol is a rest
@@ -203,10 +204,23 @@ class MelodyGenerator:
                     midi_stream.append(new_note)
                     duration_counter = 1
                 
-                start_symbol = symbol
+                if symbol != '_':
+                    start_symbol = symbol
             # symbol is a duration representation
             else:
                 duration_counter += 1
+        
+        if start_symbol is not None:
+            duration = duration_counter * 0.25
+        
+            # symbol is a rest
+            if start_symbol == 'r':
+                new_note = m21.note.Rest(quarterLength=duration)
+            # symbol is a note
+            else:
+                new_note = m21.note.Note(int(start_symbol), quarterLength=duration)
+            
+            midi_stream.append(new_note)
         
         midi_stream.write('midi', fp=melody_file)
 
@@ -266,7 +280,7 @@ class MelodyGenerator:
             melody.show()
             input("----- Enter any key to continue... -----")
             
-            input_melody = encode(transpose(melody))
+            input_melody = encode(m21.converter.parse(FINAL_MELODY + str(n+1) + ".mid"))
 
     def generate(self):
         if self.correction == False:
@@ -276,8 +290,8 @@ class MelodyGenerator:
       
 if __name__ == "__main__":
     
-    seed_melody = "do_re_mi.mid"
-    seed_num_notes = 5
+    seed_melody = "ritmos_mais_dificeis.mid"
+    seed_num_notes = 17
     seed_pos = "start"
     temperature = 0.5
     num_iterations = 5
