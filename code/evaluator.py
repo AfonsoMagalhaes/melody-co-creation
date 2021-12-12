@@ -148,23 +148,23 @@ class Evaluator:
         # Pitch based
         pc = pitch_count(melody_pitches)
         pr = pitch_range(melody_pitches)
-        api = get_average_pitch_intervals(melody_pitches)
+        pis = get_average_pitch_intervals(melody_pitches)
           
         # Rythm based
         nc = note_count(melody_pitches)
-        aioi = get_inter_onset_intervals(melody)
+        iois = get_inter_onset_intervals(melody)
       
-        return pc, pr, api, nc, aioi
+        return pc, pr, pis, nc, iois
     
     def set_originals_metrics(self, filename, name):
         
         original_melody = encode(m21.converter.parse(INPUTS_DIR + filename))
-        pc_final, pr_final, api_final, nc_final, aioi_final = self.calc_metrics(original_melody)
+        pc_final, pr_final, pis_final, nc_final, iois_final = self.calc_metrics(original_melody)
         self.metrics_originals[name] = {'pc': pc_final,
                                       'pr': pr_final,
-                                      'api': api_final,
+                                      'pi': pis_final,
                                       'nc': nc_final,
-                                      'aioi': aioi_final}
+                                      'ioi': iois_final}
     
     def get_iter_melodies(self, results_dir):
         """Get input and predicted melodies from the co-generation iterations and the final result melody.
@@ -202,77 +202,82 @@ class Evaluator:
     def set_iter_metrics_s_corr(self, results_dir, results_name):
         
         input_melodies, predicted_melodies, final_melody = self.get_iter_melodies(results_dir)
-        self.metrics_inputs_s_corr[results_name] = {'pc': [], 'pr': [], 'api': [], 'nc': [], 'aioi': []}
-        self.metrics_predictions_s_corr[results_name] = {'pc': [], 'pr': [], 'api': [], 'nc': [], 'aioi': []}
-        self.metrics_finals_s_corr[results_name] = {'pc': 0, 'pr': 0, 'api': [], 'nc': 0, 'aioi': []}
+        self.metrics_inputs_s_corr[results_name] = {'pc': [], 'pr': [], 'pi': [], 'nc': [], 'ioi': []}
+        self.metrics_predictions_s_corr[results_name] = {'pc': [], 'pr': [], 'pi': [], 'nc': [], 'ioi': []}
+        self.metrics_finals_s_corr[results_name] = {'pc': 0, 'pr': 0, 'pi': [], 'nc': 0, 'ioi': []}
         
         
         for i in range(len(input_melodies)):
-            pc_input, pr_input, api_input, nc_input, aioi_input = self.calc_metrics(input_melodies[i])
-            pc_predicted, pr_predicted, api_predicted, nc_predicted, aioi_predicted = self.calc_metrics(predicted_melodies[i])
+            pc_input, pr_input, pis_input, nc_input, iois_input = self.calc_metrics(input_melodies[i])
+            pc_predicted, pr_predicted, pis_predicted, nc_predicted, iois_predicted = self.calc_metrics(predicted_melodies[i])
             
             # guardar métricas
             self.metrics_inputs_s_corr[results_name]['pc'].append(pc_input)
             self.metrics_inputs_s_corr[results_name]['pr'].append(pr_input)
-            self.metrics_inputs_s_corr[results_name]['api'].append(api_input)
+            self.metrics_inputs_s_corr[results_name]['pi'].append(pis_input)
             self.metrics_inputs_s_corr[results_name]['nc'].append(nc_input)
-            self.metrics_inputs_s_corr[results_name]['aioi'].append(aioi_input)
+            self.metrics_inputs_s_corr[results_name]['ioi'].append(iois_input)
             
             self.metrics_predictions_s_corr[results_name]['pc'].append(pc_predicted)
             self.metrics_predictions_s_corr[results_name]['pr'].append(pr_predicted)
-            self.metrics_predictions_s_corr[results_name]['api'].append(api_predicted)
+            self.metrics_predictions_s_corr[results_name]['pi'].append(pis_predicted)
             self.metrics_predictions_s_corr[results_name]['nc'].append(nc_predicted)
-            self.metrics_predictions_s_corr[results_name]['aioi'].append(aioi_predicted)
+            self.metrics_predictions_s_corr[results_name]['ioi'].append(iois_predicted)
         
-        pc_final, pr_final, api_final, nc_final, aioi_final = self.calc_metrics(final_melody)
+        pc_final, pr_final, pis_final, nc_final, iois_final = self.calc_metrics(final_melody)
         self.metrics_finals_s_corr[results_name]['pc'] = pc_final
         self.metrics_finals_s_corr[results_name]['pr'] = pr_final
-        self.metrics_finals_s_corr[results_name]['api'] = api_final
+        self.metrics_finals_s_corr[results_name]['pi'] = pis_final
         self.metrics_finals_s_corr[results_name]['nc'] = nc_final
-        self.metrics_finals_s_corr[results_name]['aioi'] = aioi_final
+        self.metrics_finals_s_corr[results_name]['ioi'] = iois_final
     
     def set_iter_metrics_c_corr(self, results_dir, results_name):
         
         input_melodies, predicted_melodies, final_melody = self.get_iter_melodies(results_dir)
-        self.metrics_inputs_c_corr[results_name] = {'pc': [], 'pr': [], 'api': [], 'nc': [], 'aioi': []}
-        self.metrics_predictions_c_corr[results_name] = {'pc': [], 'pr': [], 'api': [], 'nc': [], 'aioi': []}
-        self.metrics_finals_c_corr[results_name] = {'pc': 0, 'pr': 0, 'api': [], 'nc': 0, 'aioi': []}
+        self.metrics_inputs_c_corr[results_name] = {'pc': [], 'pr': [], 'pi': [], 'nc': [], 'ioi': []}
+        self.metrics_predictions_c_corr[results_name] = {'pc': [], 'pr': [], 'pi': [], 'nc': [], 'ioi': []}
+        self.metrics_finals_c_corr[results_name] = {'pc': 0, 'pr': 0, 'pi': [], 'nc': 0, 'ioi': []}
         
         for i in range(len(input_melodies)):
-            pc_input, pr_input, api_input, nc_input, aioi_input = self.calc_metrics(input_melodies[i])
-            pc_predicted, pr_predicted, api_predicted, nc_predicted, aioi_predicted = self.calc_metrics(predicted_melodies[i])
+            pc_input, pr_input, pis_input, nc_input, iois_input = self.calc_metrics(input_melodies[i])
+            pc_predicted, pr_predicted, pis_predicted, nc_predicted, iois_predicted = self.calc_metrics(predicted_melodies[i])
             
             # guardar métricas
             self.metrics_inputs_c_corr[results_name]['pc'].append(pc_input)
             self.metrics_inputs_c_corr[results_name]['pr'].append(pr_input)
-            self.metrics_inputs_c_corr[results_name]['api'].append(api_input)
+            self.metrics_inputs_c_corr[results_name]['pi'].append(pis_input)
             self.metrics_inputs_c_corr[results_name]['nc'].append(nc_input)
-            self.metrics_inputs_c_corr[results_name]['aioi'].append(aioi_input)
+            self.metrics_inputs_c_corr[results_name]['ioi'].append(iois_input)
             
             self.metrics_predictions_c_corr[results_name]['pc'].append(pc_predicted)
             self.metrics_predictions_c_corr[results_name]['pr'].append(pr_predicted)
-            self.metrics_predictions_c_corr[results_name]['api'].append(api_predicted)
+            self.metrics_predictions_c_corr[results_name]['pi'].append(pis_predicted)
             self.metrics_predictions_c_corr[results_name]['nc'].append(nc_predicted)
-            self.metrics_predictions_c_corr[results_name]['aioi'].append(aioi_predicted)
+            self.metrics_predictions_c_corr[results_name]['ioi'].append(iois_predicted)
         
-        pc_final, pr_final, api_final, nc_final, aioi_final = self.calc_metrics(final_melody)
+        pc_final, pr_final, pis_final, nc_final, iois_final = self.calc_metrics(final_melody)
         self.metrics_finals_c_corr[results_name]['pc'] = pc_final
         self.metrics_finals_c_corr[results_name]['pr'] = pr_final
-        self.metrics_finals_c_corr[results_name]['api'] = api_final
+        self.metrics_finals_c_corr[results_name]['pi'] = pis_final
         self.metrics_finals_c_corr[results_name]['nc'] = nc_final
-        self.metrics_finals_c_corr[results_name]['aioi'] = aioi_final
+        self.metrics_finals_c_corr[results_name]['ioi'] = iois_final
     
     def plot_originals_absolute_metrics(self):
         
         plt.figure(figsize=(3.54,3.54), dpi=300)
-            
+        
+        ind = np.arange(3)
+        width = 0.35
+        
+        i = 0
         for song_name, metrics in self.metrics_originals.items():
             
-            plt.bar(["PC", "PR", "NC"], [metrics['pc'], metrics['pr'], metrics['nc']], label=song_name, alpha=0.5)
-            plt.xticks(rotation=90)
-            plt.ylabel("Metric", fontsize=10)
-            plt.legend()
+            plt.bar(ind+width*i, [metrics['pc'], metrics['pr'], metrics['nc']], label=song_name, width=width)
+            i += 1
 
+        plt.xticks(ind + width / 2, labels=["PC", "PR", "NC"], rotation=90)
+        plt.ylabel("Metric", fontsize=10)
+        plt.legend()
         plt.savefig(IMAGES_DIR + 'originals_absolute_metrics.png', bbox_inches='tight')
         plt.show()
         
@@ -287,21 +292,21 @@ class Evaluator:
         aiois = []
 
         for song_name, metrics in self.metrics_originals.items():
-            apis.append(metrics['api'])
-            aiois.append(metrics['aioi'])
+            apis.append(metrics['pi'])
+            aiois.append(metrics['ioi'])
             song_names.append(song_name)
         
         axs[0].boxplot(apis)
-        axs[0].set_title("Average Pitch Interval")
+        axs[0].set_title("Pitch Intervals")
         plt.sca(axs[0])
         plt.xticks(np.arange(1, num_songs+1), song_names, rotation=90)
-        plt.ylabel("API", fontsize=10)
+        plt.ylabel("PI", fontsize=10)
         
         axs[1].boxplot(aiois)
-        axs[1].set_title("Average Inter-Onset-Interval")
+        axs[1].set_title("Inter-Onset-Intervals")
         plt.sca(axs[1])
         plt.xticks(np.arange(1, num_songs+1), song_names, rotation=90)
-        plt.ylabel("AIOI", fontsize=10)
+        plt.ylabel("IOI", fontsize=10)
         
         plt.savefig(IMAGES_DIR + 'originals_intra_set_metrics.png', bbox_inches='tight')
         plt.show()
@@ -385,9 +390,9 @@ class Evaluator:
                 df = df.append(df_to_append_input)
                 df = df.append(df_to_append_predicted)
             
-            if metric_name == "api":
+            if metric_name == "pi":
                 df = df.astype({'Iteration': 'int64', 'Melody Type': 'object', metric_name: 'int64'})
-            elif metric_name == "aioi":
+            elif metric_name == "ioi":
                 df = df.astype({'Iteration': 'int64', 'Melody Type': 'object', metric_name: 'float64'})
             
             sns.boxplot(x="Iteration", y=metric_name, hue="Melody Type", data=df, notch=True, ax=axs[n])
@@ -438,9 +443,9 @@ class Evaluator:
                 df = df.append(df_to_append_input)
                 df = df.append(df_to_append_predicted)
             
-            if metric_name == "api":
+            if metric_name == "pi":
                 df = df.astype({'Iteration': 'int64', 'Melody Type': 'object', metric_name: 'int64'})
-            elif metric_name == "aioi":
+            elif metric_name == "ioi":
                 df = df.astype({'Iteration': 'int64', 'Melody Type': 'object', metric_name: 'float64'})
             
             sns.boxplot(x="Iteration", y=metric_name, hue="Melody Type", data=df, notch=True, ax=axs[n])
@@ -471,12 +476,13 @@ if __name__ == "__main__":
     ev.plot_iter_absolute_metric_s_corr("pr")
     ev.plot_iter_absolute_metric_s_corr("nc")
     
-    ev.plot_iter_intra_set_metric_s_corr("api")
-    ev.plot_iter_intra_set_metric_s_corr("aioi")
+    ev.plot_iter_intra_set_metric_s_corr("pi")
+    ev.plot_iter_intra_set_metric_s_corr("ioi")
     
     ev.plot_iter_absolute_metric_c_corr("pc")
     ev.plot_iter_absolute_metric_c_corr("pr")
     ev.plot_iter_absolute_metric_c_corr("nc")
     
-    ev.plot_iter_intra_set_metric_c_corr("api")
-    ev.plot_iter_intra_set_metric_c_corr("aioi")
+    ev.plot_iter_intra_set_metric_c_corr("pi")
+    ev.plot_iter_intra_set_metric_c_corr("ioi")
+    
